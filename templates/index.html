@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Hostel Occupancy Tracker</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+  <link rel="icon" href="{{ url_for('static', filename='favicon.ico') }}" type="image/x-icon">
+  
+  <style>
+    body { padding: 20px; background-color: #f8f9fa; }
+    h2 { color: #004080; margin-bottom: 20px; }
+    .login-form { max-width: 300px; margin-bottom: 20px; }
+    .filter-group { margin-bottom: 20px; }
+    #recordCount { font-weight: bold; margin-bottom: 10px; }
+    .pagination-wrapper { display: flex; justify-content: center; align-items: center; margin-top: 20px; }
+    .page-item.active .page-link { background-color: #007bff; border-color: #007bff; color: white; }
+    .table thead th { background-color: #004080; color: white; }
+
+    .table-scroll-wrapper {
+      overflow-x: auto;
+      white-space: nowrap;
+    }
+    .table {
+    border-collapse: separate;
+    border-spacing: 0;
+    }
+    .table th, .table td {
+      min-width: 80px;
+      max-width: 200px;
+      word-wrap: break-word;
+      white-space: normal;
+      vertical-align: middle;
+      border-top: 1px solid #dee2e6; /* soft horizontal lines */
+      border-right: none; /* remove vertical borders */
+      border-left: none;  /* remove vertical borders */
+    }
+    .table tbody tr:last-child td {
+    border-bottom: 1px solid #dee2e6; /* soft bottom line */
+   }
+    .btn {
+    padding: 0.4rem 0.75rem; /* Smaller padding */
+    font-size: 0.95rem;       /* Slightly smaller text */
+    }
+    .card {
+    border-radius: 0.75rem;
+    }
+    .card-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="row justify-content-center align-items-center mb-4 text-center">
+      <div class="col-auto">
+        <img src="{{ url_for('static', filename='GAPL_LOGO.png') }}" alt="Logo" style="height: 120px;">
+      </div>
+      <div class="col-auto">
+        <h2 class="fw-bold" style="color: #004080; font-size: 1.8rem;">Welcome to Hostel Occupancy Tracker</h2>
+      </div>
+    </div>        
+
+    <!--login form-->
+    <!-- Dynamic login/logout UI rendered by JS -->
+    <div id="login-control" class="position-absolute top-0 end-0 m-3"></div>
+
+    <div class="card mb-4 shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title mb-3" style="color: #004080;">Filters</h5>
+        <div class="row g-3">
+          <div class="col-md-2">
+            <label class="form-label">Location</label>
+            <select id="filter-location" class="form-select"></select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Hostel Type</label>
+            <select id="filter-hostel-type" class="form-select"></select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Building Name/Number</label>
+            <select id="filter-building" class="form-select"></select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Room Number</label>
+            <select id="filter-room" class="form-select"></select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Status</label>
+            <select id="filter-status" class="form-select"></select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Employee ID</label>
+            <input type="number" id="filter-employee-id" class="form-control" placeholder="Search by ID">
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Department</label>
+            <select id="filter-department" class="form-select"></select>
+          </div>
+        </div>
+      </div>
+    </div>    
+    <div id="recordCount" class="mb-3 fw-bold"></div>
+    
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      <button class="btn btn-primary" onclick="applyFilters()">Apply Filters</button>
+      <button class="btn btn-secondary" onclick="clearFilters()">Clear Filters</button>
+      <button class="btn btn-success" onclick="exportToPDF()">Export PDF</button>
+      <button class="btn btn-warning" onclick="exportToExcel()">Export Excel</button>
+      <button class="btn btn-outline-dark" onclick="exportDeletedData()">Export Deleted Data</button>
+    </div>    
+
+    <div class="pagination-wrapper mb-3">
+      <nav>
+        <ul class="pagination" id="pagination-top"></ul>
+      </nav>
+    </div>
+
+    <div class="mb-2 fw-semibold text-primary" id="recordCount"></div>
+    
+    <div class="table-responsive">
+      <table class="table table-striped table-hover rounded shadow-sm" id="data-table">
+        <thead>
+          <tr id="table-headers"></tr>
+        </thead>
+        <tbody id="table-body"></tbody>
+      </table>
+    </div>    
+
+    <div class="pagination-wrapper">
+      <nav>
+        <ul class="pagination" id="pagination"></ul>
+      </nav>
+    </div>
+  </div>
+
+  <script>
+    let allData = [];
+    let filteredData = [];
+    let page = 1;
+    let limit = 10;
+    let role = 'user';
+    
+    const filterMap = {
+      'filter-location': 'Location',
+      'filter-hostel-type': 'Hostel_Type',
+      'filter-building': 'Building_Name_Number',
+      'filter-room': 'Room_Number',
+      'filter-status': 'Status',
+      'filter-employee-id': 'Employee_ID',
+      'filter-department': 'Department'
+    };
+    
+    async function fetchAllData() {
+      const res = await fetch('/get-full-data');
+      allData = await res.json();
+      updateCascadingFilters();
+    }
+    
+    function getFilteredData() {
+    let data = [...allData];
+
+    for (const [id, col] of Object.entries(filterMap)) {
+      const element = document.getElementById(id);
+      if (!element || !col) continue;
+
+      const val = element.value?.trim();
+
+      if (val) {
+        if (id === 'filter-employee-id') {
+          if (isNaN(val)) continue; // <-- Skip non-numeric inputs like "admin"
+          data = data.filter(d => String(d[col]).includes(val));
+        } else {
+          data = data.filter(d => String(d[col]).toLowerCase() === val.toLowerCase());
+        }
+      }
+    }
+
+    return data;
+  }
+    
+    function applyFilters() {
+      page = 1;
+      filteredData = getFilteredData();
+      renderTable();
+      renderPagination(page);
+      updateRowCount();
+      updateCascadingFilters();
+    }
+    
+    function clearFilters() {
+      document.querySelectorAll("select").forEach(s => s.value = '');
+      applyFilters();
+    }
+    
+    function updateRowCount() {
+      const countDiv = document.getElementById("recordCount");
+      countDiv.innerText = `Total matching records: ${filteredData.length}`;
+    }
+    
+    function updateCascadingFilters() {
+      const cascadingOrder = ['filter-location', 'filter-hostel-type', 'filter-building', 'filter-room'];
+      const independentFilters = ['filter-status', 'filter-employee-id', 'filter-department'];
+    
+      let contextData = [...allData];
+      for (let i = 0; i < cascadingOrder.length; i++) {
+        const id = cascadingOrder[i];
+        const select = document.getElementById(id);
+        const col = filterMap[id];
+        const currentValue = select.value;
+    
+        // Populate based on filtered context
+        const uniqueValues = [...new Set(contextData.map(d => d[col]).filter(Boolean))];
+        select.innerHTML = `<option value="">All ${col}</option>`;
+        uniqueValues.forEach(v => {
+          const opt = document.createElement('option');
+          opt.value = v;
+          opt.textContent = v;
+          select.appendChild(opt);
+        });
+        select.value = currentValue;
+    
+        if (currentValue) {
+          contextData = contextData.filter(d => d[col] == currentValue);
+        }
+      }
+    
+      // Independent filters
+      independentFilters.forEach(id => {
+        const select = document.getElementById(id);
+        const col = filterMap[id];
+        const currentValue = select.value;
+        const uniqueValues = [...new Set(allData.map(d => d[col]).filter(Boolean))];
+    
+        select.innerHTML = `<option value="">All ${col}</option>`;
+        uniqueValues.forEach(v => {
+          const opt = document.createElement('option');
+          opt.value = v;
+          opt.textContent = v;
+          select.appendChild(opt);
+        });
+        select.value = currentValue;
+      });
+    }
+    
+    function renderTable() {
+      const start = (page - 1) * limit;
+      const end = start + limit;
+      const paginatedData = filteredData.slice(start, end);
+
+      const head = document.getElementById("table-headers");
+      const body = document.getElementById("table-body");
+      head.innerHTML = body.innerHTML = "";
+
+      if (!paginatedData.length) return;
+
+      const isLoggedIn = sessionStorage.getItem("loggedIn") === "true";
+
+      const keys = [
+        'Edit', // NEW COLUMN
+        'Sl.No',
+        'Location',
+        'Hostel_Type',
+        'Building_Name_Number',
+        'Room_Number',
+        'Room_Capacity',
+        'Status',
+        'Employee_ID',
+        'Employee_Name',
+        'Department',
+        'Designation',
+        'Employment_Type',
+        'Mobile_No',
+        'Joining_Date',
+        'Relieving_Date',
+        'Attachment',
+        'Aadhar_No',
+        'Remarks'
+      ];
+
+      // Render table headers
+      keys.forEach(k => {
+        head.innerHTML += `<th style="min-width:100px">${k}</th>`;
+      });
+
+      // Render each row
+      paginatedData.forEach((row, index) => {
+        const realIndex = allData.findIndex(d =>
+        d.Location === row.Location &&
+        d.Hostel_Type == row.Hostel_Type &&
+        d.Building_Name_Number == row.Building_Name_Number &&
+        d.Room_Number === row.Room_Number
+      );
+        let tr = '<tr>';
+
+        keys.forEach(k => {
+          if (k === 'Edit') {
+            if (isLoggedIn) {
+              tr += `<td><button class="btn btn-sm btn-outline-primary" onclick="enableEdit(${realIndex})">✏️</button></td>`;
+            } else {
+              tr += `<td><span class="text-muted">🔒</span></td>`;
+            }
+          } else if (k === 'Sl.No') {
+            tr += `<td>${start + index + 1}</td>`; // ✅ Sr.No increases with pagination
+          } else {
+            const value = row[k] ?? '';
+            tr += `<td id="${k}_${realIndex}">${value}</td>`;
+          }
+        });
+
+        tr += '</tr>';
+        body.innerHTML += tr;
+      });
+    }
+    
+    function renderLoginControl() {
+      const container = document.getElementById("login-control");
+      const isLoggedIn = sessionStorage.getItem("loggedIn") === "true";
+
+      if (isLoggedIn) {
+        container.innerHTML = `
+          <button class="btn btn-danger" onclick="logout()">🔓 Logout</button>
+        `;
+      } else {
+        container.innerHTML = `
+          <div class="dropdown">
+            <button class="btn btn-outline-primary dropdown-toggle" type="button" id="loginDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+              🔒 Login
+            </button>
+            <div class="dropdown-menu p-3 shadow" style="min-width: 250px;">
+              <input type="text" id="username" class="form-control mb-2" placeholder="Username">
+              <div class="input-group mb-2">
+                <input type="password" id="password" class="form-control" placeholder="Password">
+                <button class="btn btn-outline-secondary" type="button" onclick="togglePassword(event)">👁️</button>
+              </div>
+              <div class="form-check mb-2">
+                <input class="form-check-input" type="checkbox" id="rememberMe">
+                <label class="form-check-label" for="rememberMe">Remember Me</label>
+              </div>
+              <button class="btn btn-primary w-100 mb-2" onclick="login(); return false;">Login</button>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    function enableEdit(rowId) {
+      const editableFields = {
+        "Status": "dropdown",
+        "Department": "dropdown",
+        "Designation": "text",
+        "Employment_Type": "text",
+        "Mobile_No": "number",
+        "Aadhar_No": "number",
+        "Joining_Date": "date",
+        "Relieving_Date": "date",
+        "Attachment": "text",
+        "Employee_Name": "text",
+        "Employee_ID": "number",
+        "Remarks": "text"
+      };
+
+      const row = allData[rowId]; // rowId is realIndex
+      if (!row) {
+        alert("Invalid row selected.");
+        return;
+      }
+
+      const form = document.getElementById("editForm");
+      form.innerHTML = "";
+
+      Object.entries(row).forEach(([header, value]) => {
+        if (header === "Edit" || header === "Sl.No") return;
+
+        const label = `<label class="form-label">${header.replace(/_/g, ' ')}</label>`;
+        let inputHtml = "";
+
+        if (editableFields[header]) {
+          if (header === "Attachment") {
+            inputHtml = `
+              <div class="mb-2">
+                <div class="text-muted small">Current: ${value || 'None'}</div>
+                <input type="file" class="form-control" name="AttachmentFile" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx">
+                <input type="hidden" name="Attachment" value="${value || ''}">
+              </div>`;
+          } else if (editableFields[header] === "dropdown") {
+            const options = [...new Set(allData.map(d => d[header]).filter(Boolean))];
+            const optionsHtml = options.map(opt =>
+              `<option value="${opt}" ${opt === value ? 'selected' : ''}>${opt}</option>`
+            ).join("");
+
+            inputHtml = `<select class="form-select" name="${header}" onchange="highlightIfChanged(this, '${value}')">
+              ${optionsHtml}
+            </select>`;
+          } else {
+            let formattedVal = value ?? "";
+            if (editableFields[header] === "date" && value) {
+              const dateObj = new Date(value);
+              if (!isNaN(dateObj)) {
+                formattedVal = dateObj.toISOString().slice(0, 10); // yyyy-MM-dd
+              }
+            }
+
+            inputHtml = `<input type="${editableFields[header]}" class="form-control" name="${header}" value="${formattedVal}" 
+              oninput="highlightIfChanged(this, '${value}')">`;
+          }
+
+          form.innerHTML += `<div class="col-md-6">${label}${inputHtml}</div>`;
+        } else {
+          // Preserve original non-editable values
+          form.innerHTML += `<input type="hidden" name="${header}" value="${value ?? ''}">`;
+        }
+      });
+
+      // Store realIndex for saving
+      form.setAttribute("data-row-id", rowId);
+
+      // Activate tooltips (optional if you use them)
+      const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+      tooltipTriggerList.map(t => new bootstrap.Tooltip(t));
+
+      // Show the modal
+      const modal = new bootstrap.Modal(document.getElementById("editModal"));
+      modal.show();
+    }
+
+    async function saveModalEdit() {
+      const form = document.getElementById("editForm");
+      const rowId = parseInt(form.getAttribute("data-row-id"));
+      const isLoggedIn = sessionStorage.getItem("loggedIn") === "true";
+      if (!isLoggedIn) return;
+
+      const row = allData[rowId];
+      const formData = new FormData(document.getElementById("editForm"));  // Use FormData for file support
+
+      // Append original identifiers to FormData
+      ["Location", "Hostel_Type", "Building_Name_Number", "Room_Number","Room_Capacity"].forEach(field => {
+        const val = row[field] || '';
+        formData.append(`original_${field}`, val);
+      });
+
+      // Preserve existing Attachment value if no new file is chosen
+      const fileInput = form.querySelector('input[name="AttachmentFile"]');
+      if (!fileInput || fileInput.files.length === 0) {
+        // No new file selected, keep original Attachment field
+        const originalAttachment = form.querySelector('input[name="Attachment"]')?.value || "";
+        formData.set("Attachment", originalAttachment);
+      }
+
+      const res = await fetch('/update-row', {
+        method: 'POST',
+        body: formData // Don't set headers explicitly for FormData
+      });
+
+      const result = await res.json();
+      if (result.status === 'success') {
+        bootstrap.Modal.getInstance(document.getElementById("editModal")).hide();
+        alert("Record updated successfully.");
+        await fetchAllData();  // wait for fresh data
+        applyFilters();        // now safely re-render
+      } else {
+        alert("Update failed: " + result.message);
+      }
+    }
+
+    function highlightIfChanged(input, originalValue) {
+      // Handle modal inputs (inside divs) and table cells (inside <td>)
+      const parent = input.closest("td") || input.closest("div");
+      if (!parent) return; // safe guard
+
+      const currentVal = input.value;
+      if (currentVal !== originalValue) {
+        parent.style.backgroundColor = "#fff3cd"; // light yellow
+      } else {
+        parent.style.backgroundColor = ""; // reset
+      }
+    }
+
+    function cancelEdit(rowId, originalValues) {
+      const keys = [
+        'Edit', 'Sl.No', 'Location', 'Hostel_Type', 'Building_Name_Number',
+        'Room_Number', 'Room_Capacity', 'Status', 'Employee_ID', 'Employee_Name',
+        'Department', 'Designation', 'Employment_Type', 'Mobile_No',
+        'Joining_Date', 'Relieving_Date', 'Attachment', 'Aadhar_No','Remarks'
+      ];
+
+      const tableRow = document.querySelectorAll(`#table-body tr`)[rowId];
+      let tr = '<tr>';
+
+      keys.forEach(k => {
+        if (k === 'Edit') {
+          tr += `<td><button class="btn btn-sm btn-outline-primary" onclick="enableEdit(${rowId})">✏️</button></td>`;
+        } else if (k === 'Sl.No') {
+          tr += `<td>${rowId + 1}</td>`;
+        } else {
+          let val = originalValues[k] || allData[rowId]?.[k] || "";
+
+          if (k === 'Attachment') {
+            // Show attachment file name as plain text
+            const display = val ? `<span title="${val}">${val}</span>` : '';
+            tr += `<td id="${k}_${rowId}">${display}</td>`;
+          } else {
+            tr += `<td id="${k}_${rowId}">${val}</td>`;
+          }
+        }
+      });
+
+      tableRow.outerHTML = tr;
+    }
+
+    async function saveEdit(rowId) {
+      const data = {};
+      const isLoggedIn = sessionStorage.getItem("loggedIn") === "true";
+      if (!isLoggedIn) return;
+
+      const allFields = [
+        'Location', 'Hostel_Type', 'Building_Name_Number', 'Room_Number',
+        'Room_Capacity', 'Status', 'Employee_ID', 'Employee_Name', 'Department',
+        'Designation', 'Employment_Type', 'Mobile_No', 'Joining_Date',
+        'Relieving_Date', 'Attachment', 'Aadhar_No','Remarks'
+      ];
+
+      allFields.forEach(field => {
+        const cell = document.getElementById(`${field}_${rowId}`);
+        const input = cell.querySelector('input');
+        const select = cell.querySelector('select');
+
+        if (input) {
+          data[field] = input.value;
+        } else if (select) {
+          data[field] = select.value;
+        } else {
+          data[field] = cell.innerText.trim();
+        }
+      });
+
+       // Add original identifiers (unchanged fields) to help backend find correct row
+      ["Location", "Hostel_Type", "Building_Name_Number", "Room_Number"].forEach(field => {
+        const cell = document.getElementById(`${field}_${rowId}`);
+        data[`original_${field}`] = cell.innerText.trim();
+      });
+
+      const res = await fetch('/update-row', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+
+      const result = await res.json();
+      if (result.status === 'success') {
+        alert("Row updated successfully.");
+        fetchAllData(); // Re-render table
+      } else {
+        alert("Update failed: " + result.message);
+      }
+    }
+    
+    async function login() {
+      const username = document.getElementById("username").value;
+      const password = document.getElementById("password").value;
+      const remember = document.getElementById("rememberMe").checked;
+
+      const response = await fetch('/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password, remember })
+      });
+
+      const result = await response.json();
+
+      if (result.status === 'success') {
+        role = result.role;
+        sessionStorage.setItem("loggedIn", "true"); // <-- Mark user as logged in
+
+        // Show success message
+        const alertDiv = document.createElement('div');
+        alertDiv.className = "alert alert-success position-fixed top-0 start-50 translate-middle-x mt-2";
+        alertDiv.style.zIndex = 1051;
+        alertDiv.innerText = "Login Successful!";
+        document.body.appendChild(alertDiv);
+
+        setTimeout(() => {
+          alertDiv.remove();
+          renderLoginControl(); // Refresh panel to show logout
+          fetchAllData(); // Refresh data after login
+        }, 1000);
+      } else {
+        alert("Invalid username or password. Please try again.");
+      }
+    }
+    
+    async function logout() {
+      await fetch('/logout', { method: 'POST' });
+      sessionStorage.setItem("loggedIn", "false");
+      role = 'user';
+      renderLoginControl();
+      location.reload();
+    }
+
+    function renderPagination(currentPage) {
+      const paginationIds = ["pagination", "pagination-top"];
+      const totalPages = Math.ceil(filteredData.length / limit);
+
+      paginationIds.forEach(id => {
+        const pagination = document.getElementById(id);
+        pagination.innerHTML = "";
+
+        const createItem = (label, p, disabled = false, active = false) => {
+          const li = document.createElement("li");
+          li.className = `page-item ${disabled ? 'disabled' : ''} ${active ? 'active' : ''}`;
+          const a = document.createElement("a");
+          a.className = "page-link";
+          a.innerText = label;
+          a.href = "#";
+          if (!disabled) a.onclick = () => { page = p; renderTable(); renderPagination(p); };
+          li.appendChild(a);
+          return li;
+        };
+
+        pagination.appendChild(createItem("«", currentPage - 1, currentPage === 1));
+
+        const pageRange = [];
+        if (currentPage > 1) pageRange.push(currentPage - 1);
+        pageRange.push(currentPage);
+        if (currentPage < totalPages) pageRange.push(currentPage + 1);
+
+        pageRange.forEach(p => pagination.appendChild(createItem(p, p, false, p === currentPage)));
+
+        pagination.appendChild(createItem("»", currentPage + 1, currentPage === totalPages));
+      });
+    }
+
+    // Toggle password visibility in login form
+    function togglePassword(event) {
+      event.stopPropagation(); // Prevent dropdown collapse
+      const pwField = document.getElementById("password");
+      pwField.type = pwField.type === "password" ? "text" : "password";
+    }
+    
+    function exportToPDF() {
+      const { jsPDF } = window.jspdf;
+      const doc = new jsPDF({ orientation: 'landscape' });
+      
+      const headers = [
+        ['Sl.No', 'Location', 'Hostel_Type', 'Building_Name_Number', 'Room_Number', 'Room_Capacity', 'Status',
+        'Employee_ID', 'Employee_Name', 'Department', 'Designation', 'Employment_Type',
+        'Mobile_No', 'Joining_Date', 'Relieving_Date', 'Attachment', 'Aadhar_No','Remarks']
+      ];
+
+    const data = filteredData.map((row, i) => [
+      i + 1,
+      row.Location,
+      row.Hostel_Type,
+      row.Building_Name_Number,
+      row.Room_Number,
+      row.Room_Capacity,
+      row.Status,
+      row.Employee_ID,
+      row.Employee_Name,
+      row.Department,
+      row.Designation,
+      row.Employment_Type,
+      row.Mobile_No,
+      row.Joining_Date,
+      row.Relieving_Date,
+      row.Attachment,
+      row.Aadhar_No,
+      row.Remarks
+    ]);
+
+    doc.autoTable({
+      head: headers,
+      body: data,
+      styles: { fontSize: 7 },
+      margin: { top: 20 }
+    });
+
+    doc.save(`hostel_data_${new Date().toISOString().slice(0, 10)}.pdf`);
+  }
+
+    
+function exportToExcel() {
+  const headers = [
+    'Sl.No', 'Location', 'Hostel_Type', 'Building_Name_Number', 'Room_Number', 'Room_Capacity', 'Status',
+    'Employee_ID', 'Employee_Name', 'Department', 'Designation', 'Employment_Type',
+    'Mobile_No', 'Joining_Date', 'Relieving_Date', 'Attachment', 'Aadhar_No','Remarks'
+  ];
+
+  const rows = filteredData.map((row, i) => ({
+    'Sl.No': i + 1,
+    'Location': row.Location,
+    'Hostel_Type': row.Hostel_Type,
+    'Building_Name_Number': row.Building_Name_Number,
+    'Room_Number': row.Room_Number,
+    'Room_Capacity': row.Room_Capacity,
+    'Status': row.Status,
+    'Employee_ID': row.Employee_ID,
+    'Employee_Name': row.Employee_Name,
+    'Department': row.Department,
+    'Designation': row.Designation,
+    'Employment_Type': row.Employment_Type,
+    'Mobile_No': row.Mobile_No,
+    'Joining_Date': row.Joining_Date,
+    'Relieving_Date': row.Relieving_Date,
+    'Attachment': row.Attachment,
+    'Aadhar_No': row.Aadhar_No,
+    'Remarks':row.Remarks
+  }));
+
+  const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers });
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Hostel Data");
+  XLSX.writeFile(workbook, `hostel_data_${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+    
+function exportDeletedData() {
+  window.location.href = "/export-deleted-data";
+}
+
+
+    window.onload = () => {
+      fetchAllData();
+      renderLoginControl();
+    };
+    </script>
+
+   <!-- Edit Modal -->
+  <div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="editModalLabel">Edit Record</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <form id="editForm" class="row g-3"></form>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-success" onclick="saveModalEdit()">Save Changes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+ 
+</body>
+</html>

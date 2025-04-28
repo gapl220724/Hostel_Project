@@ -1,0 +1,35 @@
+Folder PATH listing
+Volume serial number is 06CD-A26D
+C:.
+¦   app.py
+¦   deleted_data.db
+¦   Hostel_Database.db
+¦   login_attempts.log
+¦   structure1.txt
+¦   users.json
+¦   
++---flask_session
+¦       2029240f6d1128be89ddc32729463129
+¦       
++---Others
+¦       deleted_data.py
+¦       Hostel_Data.py
+¦       Hostel_Data.xlsx
+¦       
++---static
+¦   ¦   favicon.ico
+¦   ¦   favicon.ico.jpg
+¦   ¦   GAPL_LOGO.png
+¦   ¦   styles.css
+¦   ¦   
+¦   +---uploads
+¦           20250421123215_Hostel_Data.xlsx
+¦           20250421131920_complaint number.jpg
+¦           KuldeepRam_12701_complaint_number.jpg
+¦           SANTOSHUPADHAY_10648_complaint_number.jpg
+¦           ShambhuRai_12443_complaint_number.jpg
+¦           
++---templates
+        index.html
+        index3.html
+        

@@ -1,0 +1,108 @@
+
+body {
+    min-height: 100vh;
+    margin: 0;
+    overflow-x: hidden;
+}
+
+.sidebar {
+    width: 250px;
+    background-color: #004080;
+    color: white;
+    padding: 20px;
+    position: fixed;
+    top: 100px;
+    bottom: 0;
+    left: 0;
+    transform: translateX(0);
+    transition: transform 0.3s ease-in-out;
+    z-index: 200;
+}
+
+.sidebar.hidden {
+    transform: translateX(-100%);
+}
+
+.sidebar h4,
+.sidebar label {
+    color: white;
+}
+
+.sidebar button,
+.sidebar .form-switch {
+    width: 100%;
+    margin-bottom: 10px;
+}
+
+.main {
+    margin-left: 0;
+    padding: 20px;
+    transition: margin-left 0.3s ease-in-out;
+}
+
+.main.shifted {
+    margin-left: 250px;
+}
+
+.hamburger {
+    position: fixed;
+    top: 10px;
+    left: 20px;
+    font-size: 30px;
+    background: #004080;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 5px 10px;
+    z-index: 300;
+}
+
+.login-button {
+    position: fixed;
+    top: 10px;
+    right: 20px;
+    background: #004080;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    font-size: 24px;
+    z-index: 300;
+}
+
+.datetime {
+    position: fixed;
+    top: 70px;
+    right: 20px;
+    color: #004080;
+    font-weight: bold;
+    background: white;
+    padding: 5px 10px;
+    border-radius: 5px;
+    z-index: 300;
+}
+
+.login-form {
+    position: fixed;
+    top: 130px;
+    right: 20px;
+    background: white;
+    padding: 20px;
+    border: 1px solid #ccc;
+    z-index: 1000;
+    display: none;
+    width: 250px;
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 15px;
+    margin-bottom: 20px;
+}
+
+.header img {
+    height: 60px;
+}
