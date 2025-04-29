@@ -294,7 +294,8 @@
         d.Location === row.Location &&
         d.Hostel_Type == row.Hostel_Type &&
         d.Building_Name_Number == row.Building_Name_Number &&
-        d.Room_Number === row.Room_Number
+        d.Room_Number === row.Room_Number &&
+        d.Room_Capacity == row.Room_Capacity
       );
         let tr = '<tr>';
 
@@ -390,9 +391,18 @@
               </div>`;
           } else if (editableFields[header] === "dropdown") {
             const options = [...new Set(allData.map(d => d[header]).filter(Boolean))];
-            const optionsHtml = options.map(opt =>
-              `<option value="${opt}" ${opt === value ? 'selected' : ''}>${opt}</option>`
-            ).join("");
+            let optionsHtml = "";
+            if (header === "Department") {
+              optionsHtml = [`<option value="">-- None --</option>`].concat(
+                options.map(opt =>
+                  `<option value="${opt}" ${opt === value ? 'selected' : ''}>${opt}</option>`
+                )
+              ).join("");
+            } else {
+              optionsHtml = options.map(opt =>
+                `<option value="${opt}" ${opt === value ? 'selected' : ''}>${opt}</option>`
+              ).join("");
+            }
 
             inputHtml = `<select class="form-select" name="${header}" onchange="highlightIfChanged(this, '${value}')">
               ${optionsHtml}
@@ -540,7 +550,7 @@
       });
 
        // Add original identifiers (unchanged fields) to help backend find correct row
-      ["Location", "Hostel_Type", "Building_Name_Number", "Room_Number"].forEach(field => {
+      ["Location", "Hostel_Type", "Building_Name_Number", "Room_Number","Room_Capacity"].forEach(field => {
         const cell = document.getElementById(`${field}_${rowId}`);
         data[`original_${field}`] = cell.innerText.trim();
       });
@@ -728,6 +738,37 @@ function exportDeletedData() {
       renderLoginControl();
     };
     </script>
+<script>
+      document.addEventListener("shown.bs.modal", function (event) {
+        if (event.target.id === "editModal") {
+          const statusField = document.querySelector('#editForm select[name="Status"]');
+          if (statusField) {
+            statusField.addEventListener("change", function () {
+              if (this.value.toLowerCase() === "vacant") {
+                const fieldsToClear = [
+                  "Employee_ID", "Employee_Name", "Department", "Designation",
+                  "Employment_Type", "Joining_Date", "Relieving_Date",
+                  "Mobile_No", "Aadhar_No", "Remarks"
+                ];
+                fieldsToClear.forEach(name => {
+                  const el = document.querySelector(`#editForm [name="${name}"]`);
+                  if (el) {
+                    if (el.tagName === "SELECT") {
+                      el.selectedIndex = 0;
+                    } else if (el.type === "file") {
+                      el.value = null;
+                    } else {
+                      el.value = "";
+                    }
+                    highlightIfChanged(el, el.getAttribute("value") || "");
+                  }
+                });
+              }
+            });
+          }
+        }
+      });
+</script>        
 
    <!-- Edit Modal -->
   <div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
