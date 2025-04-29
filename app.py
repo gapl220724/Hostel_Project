@@ -170,7 +170,7 @@ def update_row():
             updated_data['Attachment'] = filename
 
         # Use these fields to identify the correct row to update
-        identifier_fields = ["Location", "Hostel_Type", "Building_Name_Number", "Room_Number","Room_Capacity"]
+        identifier_fields = ["Location", "Hostel_Type", "Building_Name_Number", "Room_Number","Room_Capacity","Room_Capacity"]
         conditions = " AND ".join([f"[{field}] = ?" for field in identifier_fields])
         identifiers = [updated_data.get(f"original_{field}") for field in identifier_fields]
 
@@ -243,7 +243,7 @@ def update_row():
 def delete_attachment():
     data = request.get_json()
     attachment = data.get("Attachment")
-    identifiers = [data.get(k) for k in ["Location", "Hostel_Type", "Building_Name_Number", "Room_Number"]]
+    identifiers = [data.get(k) for k in ["Location", "Hostel_Type", "Building_Name_Number", "Room_Number","Room_Capacity"]]
 
     if not attachment or None in identifiers:
         return jsonify({"status": "error", "message": "Missing data"}), 400
@@ -259,7 +259,7 @@ def delete_attachment():
     # Update DB: remove attachment reference
     conn = sqlite3.connect("Hostel_Database.db")
     cursor = conn.cursor()
-    conditions = " AND ".join([f"[{field}] = ?" for field in ["Location", "Hostel_Type", "Building_Name_Number", "Room_Number"]])
+    conditions = " AND ".join([f"[{field}] = ?" for field in ["Location", "Hostel_Type", "Building_Name_Number", "Room_Number","Room_Capacity"]])
     cursor.execute(f"UPDATE Hostel_Data SET Attachment = '' WHERE {conditions}", identifiers)
     conn.commit()
     conn.close()
