@@ -11,8 +11,9 @@ table_name = 'Hostel_Data'
 desired_order = [
     "Sl.No", "Location", "Hostel_Type", "Building_Name_Number", "Room_Number",
     "Room_Capacity", "Status", "Employee_ID", "Employee_Name", "Department",
-    "Designation", "Employment_Type", "Mobile_No", "Joining_Date",
-    "Relieving_Date", "Attachment", "Aadhar_No","Remarks"
+    "Designation", "Employment_Type", "Mobile_No", "Joining_Date","Aadhar_No",
+    "Relieving_Date", "Emergency_Name","Emergency_Number","Emergency_Relation",
+    "Attachment", "Remarks"
 ]
 cleaned_order = [col.strip().replace(" ", "_").replace("/", "_") for col in desired_order]
 
@@ -49,7 +50,10 @@ cursor.execute(f'''
         Relieving_Date TEXT,
         Attachment TEXT,
         Aadhar_No TEXT,
-        Remarks TEXT
+        Remarks TEXT,
+        Emergency_Name TEXT,
+        Emergency_Number TEXT,
+        Emergency_Relation TEXT
     )
 ''')
 

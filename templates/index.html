@@ -53,16 +53,20 @@
       font-size: 1.25rem;
       font-weight: 600;
     }
+    .card .form-control {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+  }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="row justify-content-center align-items-center mb-4 text-center">
+  <div class="container px-3">
+    <div class="row justify-content-center align-items-center mb-1 text-center">
       <div class="col-auto">
         <img src="{{ url_for('static', filename='GAPL_LOGO.png') }}" alt="Logo" style="height: 120px;">
       </div>
       <div class="col-auto">
-        <h2 class="fw-bold" style="color: #004080; font-size: 1.8rem;">Welcome to Hostel Occupancy Tracker</h2>
+        <h2 class="fw-bold" style="color: #004080; font-size: 2rem;">Welcome to Hostel Occupancy Tracker</h2>
       </div>
     </div>        
 
@@ -70,7 +74,7 @@
     <!-- Dynamic login/logout UI rendered by JS -->
     <div id="login-control" class="position-absolute top-0 end-0 m-3"></div>
 
-    <div class="card mb-4 shadow-sm">
+    <div class="card m-0 shadow-sm">
       <div class="card-body">
         <h5 class="card-title mb-3" style="color: #004080;">Filters</h5>
         <div class="row g-3">
@@ -102,7 +106,17 @@
             <label class="form-label">Department</label>
             <select id="filter-department" class="form-select"></select>
           </div>
+          <!-- ✅ Extra Bed Create Button -->
+          <div class="col-md-2 mb-1 d-flex align-items-end">
+            <button class="btn btn-outline-primary" onclick="openCreateExtraBedModal()">
+            ➕ Create Extra Bed</button>
+          </div>
         </div>
+        <!-- ✅ Extra Bed Create Button -->
+        <!-- <div class="d-flex justify-content-end mt-3">
+          <button class="btn btn-outline-primary" onclick="openCreateExtraBedModal()">
+           ➕ Create Extra Bed</button>
+        </div> -->
       </div>
     </div>    
     <div id="recordCount" class="mb-3 fw-bold"></div>
@@ -139,7 +153,7 @@
     </div>
   </div>
 
-  <script>
+<script>
     let allData = [];
     let filteredData = [];
     let page = 1;
@@ -280,7 +294,10 @@
         'Relieving_Date',
         'Attachment',
         'Aadhar_No',
-        'Remarks'
+        'Remarks',
+        "Emergency_Name",
+        "Emergency_Number",
+        "Emergency_Relation"
       ];
 
       // Render table headers
@@ -363,7 +380,10 @@
         "Attachment": "text",
         "Employee_Name": "text",
         "Employee_ID": "number",
-        "Remarks": "text"
+        "Remarks": "text",
+        "Emergency_Name": "text",
+        "Emergency_Number": "number",
+        "Emergency_Relation": "text"
       };
 
       const row = allData[rowId]; // rowId is realIndex
@@ -448,8 +468,22 @@
       const row = allData[rowId];
       const formData = new FormData(document.getElementById("editForm"));  // Use FormData for file support
 
+      // ✳️ Check for extra bed and status change to Vacant
+      const originalStatus = (row["Status"] || "").toLowerCase();
+      const newStatus = (formData.get("Status") || "").toLowerCase();
+      const roomCapacity = (row["Room_Capacity"] || "").toLowerCase();
+
+      if (
+        originalStatus === "occupied" &&
+        newStatus === "vacant" &&
+        roomCapacity.startsWith("bed-extra-")
+      ) {
+        const confirmDelete = confirm("This is an extra bed. The row will be permanently deleted upon saving. Proceed?");
+        if (!confirmDelete) return;
+      }
+
       // Append original identifiers to FormData
-      ["Location", "Hostel_Type", "Building_Name_Number", "Room_Number","Room_Capacity"].forEach(field => {
+      ["Location", "Hostel_Type", "Building_Name_Number", "Room_Number", "Room_Capacity"].forEach(field => {
         const val = row[field] || '';
         formData.append(`original_${field}`, val);
       });
@@ -457,7 +491,6 @@
       // Preserve existing Attachment value if no new file is chosen
       const fileInput = form.querySelector('input[name="AttachmentFile"]');
       if (!fileInput || fileInput.files.length === 0) {
-        // No new file selected, keep original Attachment field
         const originalAttachment = form.querySelector('input[name="Attachment"]')?.value || "";
         formData.set("Attachment", originalAttachment);
       }
@@ -468,14 +501,18 @@
       });
 
       const result = await res.json();
+      bootstrap.Modal.getInstance(document.getElementById("editModal")).hide();
+
       if (result.status === 'success') {
-        bootstrap.Modal.getInstance(document.getElementById("editModal")).hide();
         alert("Record updated successfully.");
-        await fetchAllData();  // wait for fresh data
-        applyFilters();        // now safely re-render
+      } else if (result.status === 'deleted') {
+        alert("Extra bed deleted successfully.");
       } else {
         alert("Update failed: " + result.message);
       }
+
+      await fetchAllData();  // wait for fresh data
+      applyFilters();        // now safely re-render
     }
 
     function highlightIfChanged(input, originalValue) {
@@ -496,7 +533,8 @@
         'Edit', 'Sl.No', 'Location', 'Hostel_Type', 'Building_Name_Number',
         'Room_Number', 'Room_Capacity', 'Status', 'Employee_ID', 'Employee_Name',
         'Department', 'Designation', 'Employment_Type', 'Mobile_No',
-        'Joining_Date', 'Relieving_Date', 'Attachment', 'Aadhar_No','Remarks'
+        'Joining_Date', 'Relieving_Date', 'Attachment', 'Aadhar_No','Remarks',
+        "Emergency_Name", "Emergency_Number", "Emergency_Relation"
       ];
 
       const tableRow = document.querySelectorAll(`#table-body tr`)[rowId];
@@ -532,7 +570,8 @@
         'Location', 'Hostel_Type', 'Building_Name_Number', 'Room_Number',
         'Room_Capacity', 'Status', 'Employee_ID', 'Employee_Name', 'Department',
         'Designation', 'Employment_Type', 'Mobile_No', 'Joining_Date',
-        'Relieving_Date', 'Attachment', 'Aadhar_No','Remarks'
+        'Relieving_Date', 'Attachment', 'Aadhar_No','Remarks',
+        "Emergency_Name", "Emergency_Number", "Emergency_Relation",
       ];
 
       allFields.forEach(field => {
@@ -627,7 +666,14 @@
           a.className = "page-link";
           a.innerText = label;
           a.href = "#";
-          if (!disabled) a.onclick = () => { page = p; renderTable(); renderPagination(p); };
+          if (!disabled) {
+            a.onclick = (e) => {
+              e.preventDefault(); // ✅ Prevent scrolling to top
+              page = p;
+              renderTable();
+              renderPagination(p);
+            };
+          }
           li.appendChild(a);
           return li;
         };
@@ -659,7 +705,9 @@
       const headers = [
         ['Sl.No', 'Location', 'Hostel_Type', 'Building_Name_Number', 'Room_Number', 'Room_Capacity', 'Status',
         'Employee_ID', 'Employee_Name', 'Department', 'Designation', 'Employment_Type',
-        'Mobile_No', 'Joining_Date', 'Relieving_Date', 'Attachment', 'Aadhar_No','Remarks']
+        'Mobile_No', 'Joining_Date', 'Relieving_Date', 'Attachment', 'Aadhar_No','Remarks',
+        "Emergency_Name", "Emergency_Number", "Emergency_Relation"
+        ]
       ];
 
     const data = filteredData.map((row, i) => [
@@ -680,7 +728,10 @@
       row.Relieving_Date,
       row.Attachment,
       row.Aadhar_No,
-      row.Remarks
+      row.Remarks,
+      row.Emergency_Name,
+      row.Emergency_Number,
+      row.Emergency_Relation
     ]);
 
     doc.autoTable({
@@ -694,50 +745,56 @@
   }
 
     
-function exportToExcel() {
-  const headers = [
-    'Sl.No', 'Location', 'Hostel_Type', 'Building_Name_Number', 'Room_Number', 'Room_Capacity', 'Status',
-    'Employee_ID', 'Employee_Name', 'Department', 'Designation', 'Employment_Type',
-    'Mobile_No', 'Joining_Date', 'Relieving_Date', 'Attachment', 'Aadhar_No','Remarks'
-  ];
+    function exportToExcel() {
+      const headers = [
+        'Sl.No', 'Location', 'Hostel_Type', 'Building_Name_Number', 'Room_Number', 'Room_Capacity', 'Status',
+        'Employee_ID', 'Employee_Name', 'Department', 'Designation', 'Employment_Type',
+        'Mobile_No', 'Joining_Date', 'Relieving_Date', 'Attachment', 'Aadhar_No','Remarks',
+        "Emergency_Name", "Emergency_Number", "Emergency_Relation"
+      ];
 
-  const rows = filteredData.map((row, i) => ({
-    'Sl.No': i + 1,
-    'Location': row.Location,
-    'Hostel_Type': row.Hostel_Type,
-    'Building_Name_Number': row.Building_Name_Number,
-    'Room_Number': row.Room_Number,
-    'Room_Capacity': row.Room_Capacity,
-    'Status': row.Status,
-    'Employee_ID': row.Employee_ID,
-    'Employee_Name': row.Employee_Name,
-    'Department': row.Department,
-    'Designation': row.Designation,
-    'Employment_Type': row.Employment_Type,
-    'Mobile_No': row.Mobile_No,
-    'Joining_Date': row.Joining_Date,
-    'Relieving_Date': row.Relieving_Date,
-    'Attachment': row.Attachment,
-    'Aadhar_No': row.Aadhar_No,
-    'Remarks':row.Remarks
-  }));
+      const rows = filteredData.map((row, i) => ({
+        'Sl.No': i + 1,
+        'Location': row.Location,
+        'Hostel_Type': row.Hostel_Type,
+        'Building_Name_Number': row.Building_Name_Number,
+        'Room_Number': row.Room_Number,
+        'Room_Capacity': row.Room_Capacity,
+        'Status': row.Status,
+        'Employee_ID': row.Employee_ID,
+        'Employee_Name': row.Employee_Name,
+        'Department': row.Department,
+        'Designation': row.Designation,
+        'Employment_Type': row.Employment_Type,
+        'Mobile_No': row.Mobile_No,
+        'Joining_Date': row.Joining_Date,
+        'Relieving_Date': row.Relieving_Date,
+        'Attachment': row.Attachment,
+        'Aadhar_No': row.Aadhar_No,
+        'Remarks':row.Remarks,
+        "Emergency_Name":row.Emergency_Name,
+        "Emergency_Number":row.Emergency_Number,
+        "Emergency_Relation":row.Emergency_Relation
 
-  const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers });
-  const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, "Hostel Data");
-  XLSX.writeFile(workbook, `hostel_data_${new Date().toISOString().slice(0, 10)}.xlsx`);
-}
-    
-function exportDeletedData() {
-  window.location.href = "/export-deleted-data";
-}
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers });
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Hostel Data");
+      XLSX.writeFile(workbook, `hostel_data_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    }
+        
+    function exportDeletedData() {
+      window.location.href = "/export-deleted-data";
+    }
 
 
     window.onload = () => {
       fetchAllData();
       renderLoginControl();
     };
-    </script>
+</script>
+
 <script>
       document.addEventListener("shown.bs.modal", function (event) {
         if (event.target.id === "editModal") {
@@ -748,7 +805,8 @@ function exportDeletedData() {
                 const fieldsToClear = [
                   "Employee_ID", "Employee_Name", "Department", "Designation",
                   "Employment_Type", "Joining_Date", "Relieving_Date",
-                  "Mobile_No", "Aadhar_No", "Remarks"
+                  "Mobile_No", "Aadhar_No", "Remarks",
+                  "Emergency_Name", "Emergency_Number", "Emergency_Relation"
                 ];
                 fieldsToClear.forEach(name => {
                   const el = document.querySelector(`#editForm [name="${name}"]`);
@@ -768,7 +826,226 @@ function exportDeletedData() {
           }
         }
       });
-</script>        
+</script>
+
+<!-- JS Logic Script for Extra-Bed Row Creation Modal -->
+<script>
+  async function openCreateExtraBedModal() {
+    const form = document.getElementById("createExtraBedForm");
+    form.innerHTML = "";
+
+    const filterRes = await fetch('/get-filter-values');
+    const filters = await filterRes.json();
+
+    const fields = [
+      { label: "Location", name: "Location", options: filters.Location },
+      { label: "Hostel Type", name: "Hostel_Type", options: filters.Hostel_Type },
+      { label: "Building Name/Number", name: "Building_Name_Number", options: filters.Building_Name_Number },
+      { label: "Room Number", name: "Room_Number", options: filters.Room_Number },
+      { label: "Status", name: "Status", options: filters.Status },
+      { label: "Department", name: "Department", options: filters.Department },
+      { label: "Employee ID", name: "Employee_ID", type: "number" },
+      { label: "Employee Name", name: "Employee_Name", type: "text" },
+      { label: "Designation", name: "Designation", type: "text" },
+      { label: "Employment Type", name: "Employment_Type", type: "text" },
+      { label: "Mobile No", name: "Mobile_No", type: "number" },
+      { label: "Aadhar No", name: "Aadhar_No", type: "number" },
+      { label: "Joining Date", name: "Joining_Date", type: "date" },
+      { label: "Relieving Date", name: "Relieving_Date", type: "date" },
+      { label: "Remarks", name: "Remarks", type: "text" },
+      { label: "Emergency Contact Name", name: "Emergency_Name", type: "text" },
+      { label: "Emergency Contact Number", name: "Emergency_Number", type: "number" },
+      { label: "Emergency Contact Relation", name: "Emergency_Relation", type: "text" }
+    ];
+
+    for (const field of fields) {
+      const div = document.createElement("div");
+      div.className = "col-md-6";
+      const label = `<label class="form-label">${field.label}</label>`;
+
+      if (field.options) {
+        const optionsHtml = field.options.map(opt => `<option value="${opt}">${opt}</option>`).join("");
+        div.innerHTML = `${label}<select name="${field.name}" class="form-select" onchange="handleFieldChange()">${optionsHtml}</select>`;
+      } else {
+        div.innerHTML = `${label}<input type="${field.type}" name="${field.name}" class="form-control">`;
+      }
+
+      form.appendChild(div);
+    }
+
+    // Placeholder for Room_Capacity dropdown
+    const capacityDiv = document.createElement("div");
+    capacityDiv.className = "col-md-6";
+    capacityDiv.innerHTML = `
+      <label class="form-label">Room Capacity</label>
+      <select name="Room_Capacity" class="form-select" id="extraBedDropdown" disabled>
+        <option>Choose Room & Building first</option>
+      </select>
+    `;
+    form.appendChild(capacityDiv);
+
+    const modal = new bootstrap.Modal(document.getElementById("createExtraBedModal"));
+    modal.show();
+  }
+
+  async function handleFieldChange() {
+    const form = document.getElementById("createExtraBedForm");
+    const location = form.querySelector('[name="Location"]')?.value;
+    const building = form.querySelector('[name="Building_Name_Number"]')?.value;
+    const room = form.querySelector('[name="Room_Number"]')?.value;
+
+    if (location && building && room) {
+      const res = await fetch(`/get-bed-extra-options?Location=${location}&Building_Name_Number=${building}&Room_Number=${room}`);
+      const data = await res.json();
+
+      const existingBeds = data.existing || [];
+      const nextBed = `Bed-Extra-${existingBeds.length + 1}`;
+      const dropdown = document.getElementById("extraBedDropdown");
+
+      dropdown.innerHTML = `<option value="${nextBed}">${nextBed}</option>`;
+      dropdown.disabled = false;
+
+      if (existingBeds.length > 0) {
+        alert(`For Room ${room}, these beds already exist: ${existingBeds.join(", ")}. You may add ${nextBed}.`);
+      }
+    }
+  }
+
+  async function submitExtraBed() {
+    const form = document.getElementById("createExtraBedForm");
+    const formData = new FormData(form);
+
+    const res = await fetch('/add-row', {
+      method: 'POST',
+      body: formData
+    });
+
+    const result = await res.json();
+    const modal = bootstrap.Modal.getInstance(document.getElementById("createExtraBedModal"));
+
+    if (result.status === 'success') {
+      modal.hide();
+      alert("Extra bed created successfully.");
+      await fetchAllData();
+      applyFilters();
+    } else if (result.status === 'duplicate') {
+      alert(result.message);  // 👈 Shows duplicate entry message
+    } else {
+      alert("Failed to create extra bed: " + result.message);
+    }
+  }
+</script>
+<script>
+  let fullDataForCreate = [];
+
+async function openCreateExtraBedModal() {
+  const form = document.getElementById("createExtraBedForm");
+  form.innerHTML = "";
+
+  // Load all data from DB for dropdown mapping
+  const res = await fetch('/get-full-data');
+  fullDataForCreate = await res.json();
+
+  renderCreateDropdowns(); // builds Location dropdown and sets up cascade
+
+  // Placeholder for Room_Capacity (set dynamically)
+  const capacityDiv = document.createElement("div");
+  capacityDiv.className = "col-md-6";
+  capacityDiv.innerHTML = `
+    <label class="form-label">Room Capacity</label>
+    <select name="Room_Capacity" class="form-select" id="extraBedDropdown" disabled>
+      <option>Choose Room & Building first</option>
+    </select>
+  `;
+  form.appendChild(capacityDiv);
+
+  const modal = new bootstrap.Modal(document.getElementById("createExtraBedModal"));
+  modal.show();
+}
+
+function renderCreateDropdowns() {
+  const form = document.getElementById("createExtraBedForm");
+  const dropdownFields = [
+    { id: "Location", label: "Location" },
+    { id: "Hostel_Type", label: "Hostel Type" },
+    { id: "Building_Name_Number", label: "Building Name/Number" },
+    { id: "Room_Number", label: "Room Number" },
+    { id: "Status", label: "Status" },
+    { id: "Department", label: "Department" }
+  ];
+
+  dropdownFields.forEach(field => {
+    const div = document.createElement("div");
+    div.className = "col-md-6";
+    div.innerHTML = `
+      <label class="form-label">${field.label}</label>
+      <select name="${field.id}" class="form-select" onchange="handleCascadeChange('${field.id}')">
+        <option value="">Select ${field.label}</option>
+      </select>
+    `;
+    form.appendChild(div);
+  });
+
+  updateCascadeDropdown("Location");
+}
+
+function handleCascadeChange(changedField) {
+  const order = ["Location", "Hostel_Type", "Building_Name_Number", "Room_Number"];
+  const changedIndex = order.indexOf(changedField);
+
+  if (changedIndex === -1) return;
+
+  // Reset subsequent fields
+  for (let i = changedIndex + 1; i < order.length; i++) {
+    const dropdown = document.querySelector(`#createExtraBedForm select[name="${order[i]}"]`);
+    if (dropdown) {
+      dropdown.innerHTML = `<option value="">Select ${order[i].replace(/_/g, " ")}</option>`;
+    }
+  }
+
+  // Refill next dropdown
+  if (changedIndex < order.length - 1) {
+    updateCascadeDropdown(order[changedIndex + 1]);
+  }
+
+  // If Room Number selected, fetch Bed-Extra options
+  if (changedField === "Room_Number") {
+    handleFieldChange(); // this sets Room_Capacity dropdown
+  }
+}
+
+function updateCascadeDropdown(fieldName) {
+  const form = document.getElementById("createExtraBedForm");
+  const filters = {
+    Location: form.querySelector('[name="Location"]')?.value || "",
+    Hostel_Type: form.querySelector('[name="Hostel_Type"]')?.value || "",
+    Building_Name_Number: form.querySelector('[name="Building_Name_Number"]')?.value || ""
+  };
+
+  let filtered = [...fullDataForCreate];
+
+  if (filters.Location) {
+    filtered = filtered.filter(d => d.Location === filters.Location);
+  }
+  if (filters.Hostel_Type) {
+    filtered = filtered.filter(d => d.Hostel_Type === filters.Hostel_Type);
+  }
+  if (filters.Building_Name_Number) {
+    filtered = filtered.filter(d => d.Building_Name_Number === filters.Building_Name_Number);
+  }
+
+  const values = [...new Set(filtered.map(row => row[fieldName]).filter(Boolean))];
+
+  const dropdown = form.querySelector(`select[name="${fieldName}"]`);
+  dropdown.innerHTML = `<option value="">Select ${fieldName.replace(/_/g, " ")}</option>`;
+  values.forEach(val => {
+    const opt = document.createElement("option");
+    opt.value = val;
+    opt.textContent = val;
+    dropdown.appendChild(opt);
+  });
+}
+</script>
 
    <!-- Edit Modal -->
   <div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
@@ -788,6 +1065,27 @@ function exportDeletedData() {
       </div>
     </div>
   </div>
- 
+
+  <!-- Create Extra Bed Modal -->
+  <div class="modal fade" id="createExtraBedModal" tabindex="-1" aria-labelledby="createExtraBedLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header bg-success text-white">
+          <h5 class="modal-title" id="createExtraBedLabel">Create Extra Bed Entry</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body">
+          <form id="createExtraBedForm" class="row g-3">
+            <!-- Dynamic fields inserted here -->
+          </form>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-success" onclick="submitExtraBed()">Save Extra Bed</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>

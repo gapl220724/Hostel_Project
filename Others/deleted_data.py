@@ -24,6 +24,9 @@ def initialize_deleted_data_db():
             Remarks TEXT,
             Attachment TEXT,
             Aadhar_No TEXT,
+            Emergency_Name TEXT,
+            Emergency_Number TEXT,
+            Emergency_Relation TEXT,
             Deleted_At TEXT,      -- When it was backed up
             Modified_By TEXT,     -- Who updated the record
             Modified_At TEXT      -- When the update was made

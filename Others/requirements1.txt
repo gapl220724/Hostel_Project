@@ -1,0 +1,7 @@
+Flask
+flask-session
+flask-cors
+pandas
+openpyxl
+XlsxWriter
+gunicorn

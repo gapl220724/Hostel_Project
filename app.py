@@ -139,11 +139,6 @@ def login():
         return jsonify({"status": "failure", "message": "Invalid credentials"}), 401
 
 # --- Route: logout
-@app.route('/logout', methods=['POST'])
-def logout():
-    session.clear()
-    return jsonify({"status": "success"})
-
 @app.route('/update-row', methods=['POST'])
 def update_row():
     try:
@@ -170,7 +165,7 @@ def update_row():
             updated_data['Attachment'] = filename
 
         # Use these fields to identify the correct row to update
-        identifier_fields = ["Location", "Hostel_Type", "Building_Name_Number", "Room_Number","Room_Capacity","Room_Capacity"]
+        identifier_fields = ["Location", "Hostel_Type", "Building_Name_Number", "Room_Number", "Room_Capacity", "Room_Capacity"]
         conditions = " AND ".join([f"[{field}] = ?" for field in identifier_fields])
         identifiers = [updated_data.get(f"original_{field}") for field in identifier_fields]
 
@@ -194,7 +189,39 @@ def update_row():
 
         if old_row:
             old_data = dict(old_row)
-            old_data.pop("Sl.No", None)  # Add this line to skip it
+            old_status = old_data.get("Status", "").lower()
+            old_capacity = old_data.get("Room_Capacity", "").lower()
+            new_status = updated_data.get("Status", "").lower()
+
+            # ✅ DELETE LOGIC: If Extra Bed becomes Vacant, delete the row after backup
+            if old_status == "occupied" and new_status == "vacant" and old_capacity.startswith("bed-extra-"):
+                old_data.pop("Sl.No", None)
+                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                old_data["Deleted_At"] = now
+                old_data["Modified_By"] = session.get("username", "unknown")
+                old_data["Modified_At"] = now
+
+                columns = ', '.join([f"[{col}]" for col in old_data.keys()])
+                placeholders = ', '.join(['?'] * len(old_data))
+                values = list(old_data.values())
+
+                cursor_deleted.execute(
+                    f"INSERT INTO Deleted_Hostel_Data ({columns}) VALUES ({placeholders})",
+                    values
+                )
+                conn_deleted.commit()
+
+                # Delete from main DB
+                cursor_main.execute(f"DELETE FROM Hostel_Data WHERE {conditions}", identifiers)
+                conn_main.commit()
+
+                conn_main.close()
+                conn_deleted.close()
+
+                return jsonify({"status": "deleted", "message": "Extra bed row deleted due to status change"})
+
+            # Normal backup (for any other kind of update)
+            old_data.pop("Sl.No", None)
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             old_data["Deleted_At"] = now
             old_data["Modified_By"] = session.get("username", "unknown")
@@ -208,8 +235,8 @@ def update_row():
                 f"INSERT INTO Deleted_Hostel_Data ({columns}) VALUES ({placeholders})",
                 values
             )
-
             conn_deleted.commit()
+
         # Prepare data for update
         # Allow empty strings; just skip keys that are metadata like 'original_X'
         fields = [k for k in updated_data.keys() if not k.startswith("original_")]
@@ -238,6 +265,25 @@ def update_row():
         import traceback
         print("Error in /update-row:", traceback.format_exc())
         return jsonify({"status": "error", "message": str(e)}), 500
+
+# --- Route: Extra Bed logic
+@app.route('/get-bed-extra-options')
+def get_bed_extra_options():
+    location = request.args.get("Location")
+    building = request.args.get("Building_Name_Number")
+    room = request.args.get("Room_Number")
+
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT Room_Capacity FROM Hostel_Data
+        WHERE Location = ? AND Building_Name_Number = ? AND Room_Number = ?
+          AND Room_Capacity LIKE 'Bed-Extra-%'
+    """, (location, building, room))
+
+    existing = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    return jsonify({"existing": existing})
 
 @app.route('/delete-attachment', methods=['POST'])
 def delete_attachment():
@@ -318,6 +364,79 @@ def export_deleted_data():
     )
 # --- Route: Serve frontend ---
 
+# --- Route: New row logic for ---
+@app.route('/add-row', methods=['POST'])
+def add_row():
+    try:
+        file = None
+        if request.content_type and request.content_type.startswith('multipart/form-data'):
+            data = request.form.to_dict()
+            file = request.files.get('AttachmentFile')
+        else:
+            return jsonify({"status": "error", "message": "Unsupported content type"}), 400
+
+        # Optional file upload
+        if file and file.filename:
+            employee_name = data.get('Employee_Name', 'Unknown').replace(" ", "").strip()
+            employee_id = data.get('Employee_ID', 'NA').strip()
+            original_filename = file.filename.strip().replace(" ", "_")
+            filename = f"{employee_name}_{employee_id}_{original_filename}"
+
+            upload_path = os.path.join('static', 'uploads')
+            os.makedirs(upload_path, exist_ok=True)
+            file_path = os.path.join(upload_path, filename)
+            file.save(file_path)
+
+            data['Attachment'] = filename
+        else:
+            data['Attachment'] = ""
+
+        # Open DB
+        conn = sqlite3.connect("Hostel_Database.db")
+        conn.row_factory = sqlite3.Row
+        cursor = conn.cursor()
+
+        # Prepare insert fields
+        all_fields = [
+            "Location", "Hostel_Type", "Building_Name_Number", "Room_Number", "Room_Capacity",
+            "Status", "Employee_ID", "Employee_Name", "Department", "Designation", "Employment_Type",
+            "Mobile_No", "Joining_Date", "Relieving_Date", "Attachment", "Aadhar_No", "Remarks",
+            "Emergency_Name", "Emergency_Number", "Emergency_Relation"
+        ]
+
+        # Filter and sanitize values
+        insert_data = {k: data.get(k, "").strip() for k in all_fields}
+        columns = ', '.join([f"[{col}]" for col in insert_data])
+        placeholders = ', '.join(['?'] * len(insert_data))
+        values = list(insert_data.values())
+
+        # ✅ Duplicate check inserted here (non-breaking)
+        check_fields = ["Location", "Hostel_Type", "Building_Name_Number", "Room_Number", "Room_Capacity"]
+        check_values = [insert_data[k] for k in check_fields]
+        where_clause = " AND ".join([f"[{f}] = ?" for f in check_fields])
+
+        cursor.execute(f"SELECT COUNT(*) FROM Hostel_Data WHERE {where_clause}", check_values)
+        exists = cursor.fetchone()[0]
+
+        if exists:
+            conn.close()
+            return jsonify({
+                "status": "duplicate",
+                "message": f"Room_Capacity '{insert_data['Room_Capacity']}' already exists for this room. Please choose a different one."
+            })
+
+        # Insert row
+        cursor.execute(f"INSERT INTO Hostel_Data ({columns}) VALUES ({placeholders})", values)
+        conn.commit()
+        conn.close()
+
+        return jsonify({"status": "success"})
+
+    except Exception as e:
+        import traceback
+        print("Error in /add-row:", traceback.format_exc())
+        return jsonify({"status": "error", "message": str(e)}), 500
+    
 @app.route('/')
 def serve_index():
     return render_template('index.html')
