@@ -327,7 +327,14 @@
             tr += `<td>${start + index + 1}</td>`; // ✅ Sr.No increases with pagination
           } else {
             const value = row[k] ?? '';
-            tr += `<td id="${k}_${realIndex}">${value}</td>`;
+            if (k === 'Attachment' && value) {
+              const url = `/static/uploads/${value}`;
+              tr += `<td id="${k}_${realIndex}">
+                <button class="btn btn-sm btn-outline-info" onclick="openAttachmentModal('${url}')">📎 View</button>
+              </td>`;
+            } else {
+              tr += `<td id="${k}_${realIndex}">${value}</td>`;
+            }
           }
         });
 
@@ -432,12 +439,20 @@
             if (editableFields[header] === "date" && value) {
               const dateObj = new Date(value);
               if (!isNaN(dateObj)) {
-                formattedVal = dateObj.toISOString().slice(0, 10); // yyyy-MM-dd
+                const day = String(dateObj.getDate()).padStart(2, '0');
+                const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+                const month = monthNames[dateObj.getMonth()];
+                const year = dateObj.getFullYear();
+                formattedVal = `${day}-${month}-${year}`; // ✅ new format: dd-mmm-yyyy
               }
             }
-
+            const requiredFields = [
+              "Employee_Name", "Mobile_No", "Aadhar_No", "Employment_Type",
+              "Joining_Date", "Emergency_Name", "Emergency_Number", "Emergency_Relation"
+            ];
+            const isRequired = requiredFields.includes(header) ? "required" : "";
             inputHtml = `<input type="${editableFields[header]}" class="form-control" name="${header}" value="${formattedVal}" 
-              oninput="highlightIfChanged(this, '${value}')">`;
+              ${isRequired} oninput="highlightIfChanged(this, '${value}')">`;
           }
 
           form.innerHTML += `<div class="col-md-6">${label}${inputHtml}</div>`;
@@ -698,19 +713,25 @@
       pwField.type = pwField.type === "password" ? "text" : "password";
     }
     
-    function exportToPDF() {
-      const { jsPDF } = window.jspdf;
-      const doc = new jsPDF({ orientation: 'landscape' });
-      
-      const headers = [
-        ['Sl.No', 'Location', 'Hostel_Type', 'Building_Name_Number', 'Room_Number', 'Room_Capacity', 'Status',
-        'Employee_ID', 'Employee_Name', 'Department', 'Designation', 'Employment_Type',
-        'Mobile_No', 'Joining_Date', 'Relieving_Date', 'Attachment', 'Aadhar_No','Remarks',
-        "Emergency_Name", "Emergency_Number", "Emergency_Relation"
-        ]
-      ];
+async function exportToPDF() {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape' });
 
-    const data = filteredData.map((row, i) => [
+  const headers = [
+    ['Sl.No', 'Location', 'Hostel_Type', 'Building_Name_Number', 'Room_Number', 'Room_Capacity', 'Status',
+      'Employee_ID', 'Employee_Name', 'Department', 'Designation', 'Employment_Type',
+      'Mobile_No', 'Joining_Date', 'Relieving_Date', 'Attachment', 'Aadhar_No', 'Remarks',
+      "Emergency_Name", "Emergency_Number", "Emergency_Relation"
+    ]
+  ];
+
+  const tableData = [];
+  const imageRows = [];
+
+  for (let i = 0; i < filteredData.length; i++) {
+    const row = filteredData[i];
+
+    const rowData = [
       i + 1,
       row.Location,
       row.Hostel_Type,
@@ -726,73 +747,116 @@
       row.Mobile_No,
       row.Joining_Date,
       row.Relieving_Date,
-      row.Attachment,
+      '', // Placeholder for Attachment column
       row.Aadhar_No,
       row.Remarks,
       row.Emergency_Name,
       row.Emergency_Number,
       row.Emergency_Relation
-    ]);
+    ];
 
-    doc.autoTable({
-      head: headers,
-      body: data,
-      styles: { fontSize: 7 },
-      margin: { top: 20 }
-    });
+    const attachment = row.Attachment;
+    const ext = attachment ? attachment.split('.').pop().toLowerCase() : "";
 
-    doc.save(`hostel_data_${new Date().toISOString().slice(0, 10)}.pdf`);
+    if (attachment && ['jpg', 'jpeg', 'png'].includes(ext)) {
+      try {
+        const imageUrl = `/static/uploads/${attachment}`;
+        const blob = await fetch(imageUrl).then(res => res.blob());
+        const reader = new FileReader();
+
+        await new Promise((resolve, reject) => {
+          reader.onload = () => {
+            rowData[15] = 'Image Attached';
+            imageRows.push({ index: i, imageData: reader.result });
+            resolve();
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        });
+      } catch (e) {
+        rowData[15] = `Image load failed: ${attachment}`;
+      }
+    } else if (attachment) {
+      rowData[15] = `📎 ${attachment}`;
+    }
+
+    tableData.push(rowData);
   }
 
+  doc.autoTable({
+    head: headers,
+    body: tableData,
+    styles: { fontSize: 7 },
+    margin: { top: 20 }
+  });
+
+  const startY = doc.lastAutoTable.finalY + 5;
+
+  // Draw small previews for images
+  if (imageRows.length > 0) {
+    doc.setFontSize(10);
+    doc.text("Image Attachments:", 14, startY);
+
+    let y = startY + 5;
+    for (const item of imageRows) {
+      doc.text(`Row ${item.index + 1}:`, 14, y);
+      doc.addImage(item.imageData, 'JPEG', 30, y - 4, 25, 20); // Image size (w:25, h:20)
+      y += 25;
+    }
+  }
+
+  doc.save(`hostel_data_${new Date().toISOString().slice(0, 10)}.pdf`);
+}
     
-    function exportToExcel() {
-      const headers = [
-        'Sl.No', 'Location', 'Hostel_Type', 'Building_Name_Number', 'Room_Number', 'Room_Capacity', 'Status',
-        'Employee_ID', 'Employee_Name', 'Department', 'Designation', 'Employment_Type',
-        'Mobile_No', 'Joining_Date', 'Relieving_Date', 'Attachment', 'Aadhar_No','Remarks',
-        "Emergency_Name", "Emergency_Number", "Emergency_Relation"
-      ];
+function exportToExcel() {
+  const headers = [
+    'Sl.No', 'Location', 'Hostel_Type', 'Building_Name_Number', 'Room_Number', 'Room_Capacity', 'Status',
+    'Employee_ID', 'Employee_Name', 'Department', 'Designation', 'Employment_Type',
+    'Mobile_No', 'Joining_Date', 'Relieving_Date', 'Attachment', 'Aadhar_No','Remarks',
+    "Emergency_Name", "Emergency_Number", "Emergency_Relation"
+  ];
 
-      const rows = filteredData.map((row, i) => ({
-        'Sl.No': i + 1,
-        'Location': row.Location,
-        'Hostel_Type': row.Hostel_Type,
-        'Building_Name_Number': row.Building_Name_Number,
-        'Room_Number': row.Room_Number,
-        'Room_Capacity': row.Room_Capacity,
-        'Status': row.Status,
-        'Employee_ID': row.Employee_ID,
-        'Employee_Name': row.Employee_Name,
-        'Department': row.Department,
-        'Designation': row.Designation,
-        'Employment_Type': row.Employment_Type,
-        'Mobile_No': row.Mobile_No,
-        'Joining_Date': row.Joining_Date,
-        'Relieving_Date': row.Relieving_Date,
-        'Attachment': row.Attachment,
-        'Aadhar_No': row.Aadhar_No,
-        'Remarks':row.Remarks,
-        "Emergency_Name":row.Emergency_Name,
-        "Emergency_Number":row.Emergency_Number,
-        "Emergency_Relation":row.Emergency_Relation
+  const rows = filteredData.map((row, i) => ({
+    'Sl.No': i + 1,
+    'Location': row.Location,
+    'Hostel_Type': row.Hostel_Type,
+    'Building_Name_Number': row.Building_Name_Number,
+    'Room_Number': row.Room_Number,
+    'Room_Capacity': row.Room_Capacity,
+    'Status': row.Status,
+    'Employee_ID': row.Employee_ID,
+    'Employee_Name': row.Employee_Name,
+    'Department': row.Department,
+    'Designation': row.Designation,
+    'Employment_Type': row.Employment_Type,
+    'Mobile_No': row.Mobile_No,
+    'Joining_Date': row.Joining_Date,
+    'Relieving_Date': row.Relieving_Date,
+    'Attachment': row.Attachment
+      ? { f: `HYPERLINK("static/uploads/${row.Attachment}", "${row.Attachment}")` }
+      : '',
+    'Aadhar_No': row.Aadhar_No,
+    'Remarks':row.Remarks,
+    "Emergency_Name":row.Emergency_Name,
+    "Emergency_Number":row.Emergency_Number,
+    "Emergency_Relation":row.Emergency_Relation
 
-      }));
+  }));
 
-      const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers });
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Hostel Data");
-      XLSX.writeFile(workbook, `hostel_data_${new Date().toISOString().slice(0, 10)}.xlsx`);
-    }
+  const worksheet = XLSX.utils.json_to_sheet(rows, { header: headers });
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Hostel Data");
+  XLSX.writeFile(workbook, `hostel_data_${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
         
-    function exportDeletedData() {
-      window.location.href = "/export-deleted-data";
-    }
+function exportDeletedData() {
+  window.location.href = "/export-deleted-data";
+}
 
-
-    window.onload = () => {
-      fetchAllData();
-      renderLoginControl();
-    };
+  window.onload = () => {
+    fetchAllData();
+    renderLoginControl();
+  };
 </script>
 
 <script>
@@ -912,28 +976,33 @@
   }
 
   async function submitExtraBed() {
-    const form = document.getElementById("createExtraBedForm");
-    const formData = new FormData(form);
+  const form = document.getElementById("createExtraBedForm");
 
-    const res = await fetch('/add-row', {
-      method: 'POST',
-      body: formData
-    });
+  // ✅ Prevent submission if any required fields are missing
+  if (!form.reportValidity()) return;
 
-    const result = await res.json();
-    const modal = bootstrap.Modal.getInstance(document.getElementById("createExtraBedModal"));
+  const formData = new FormData(form);
 
-    if (result.status === 'success') {
-      modal.hide();
-      alert("Extra bed created successfully.");
-      await fetchAllData();
-      applyFilters();
-    } else if (result.status === 'duplicate') {
-      alert(result.message);  // 👈 Shows duplicate entry message
-    } else {
-      alert("Failed to create extra bed: " + result.message);
-    }
+  const res = await fetch('/add-row', {
+    method: 'POST',
+    body: formData
+  });
+
+  const result = await res.json();
+  const modal = bootstrap.Modal.getInstance(document.getElementById("createExtraBedModal"));
+
+  if (result.status === 'success') {
+    modal.hide();
+    alert("Extra bed created successfully.");
+    await fetchAllData();
+    applyFilters();
+  } else if (result.status === 'duplicate') {
+    alert(result.message);
+  } else {
+    alert("Failed to create extra bed: " + result.message);
   }
+}
+
 </script>
 <script>
   let fullDataForCreate = [];
@@ -965,28 +1034,74 @@ async function openCreateExtraBedModal() {
 
 function renderCreateDropdowns() {
   const form = document.getElementById("createExtraBedForm");
+
   const dropdownFields = [
     { id: "Location", label: "Location" },
     { id: "Hostel_Type", label: "Hostel Type" },
     { id: "Building_Name_Number", label: "Building Name/Number" },
     { id: "Room_Number", label: "Room Number" },
     { id: "Status", label: "Status" },
-    { id: "Department", label: "Department" }
+    { id: "Department", label: "Department" } // ✅ Required
   ];
 
+  const otherFields = [
+    { id: "Employee_ID", label: "Employee ID", type: "number" },
+    { id: "Employee_Name", label: "Employee Name", type: "text" },
+    { id: "Designation", label: "Designation", type: "text" },
+    { id: "Mobile_No", label: "Mobile No", type: "number" },
+    { id: "Aadhar_No", label: "Aadhar No", type: "number" },
+    { id: "Joining_Date", label: "Joining Date", type: "date" },
+    { id: "Relieving_Date", label: "Relieving Date", type: "date" },
+    { id: "Remarks", label: "Remarks", type: "text" },
+    { id: "Emergency_Name", label: "Emergency Contact Name", type: "text" },
+    { id: "Emergency_Number", label: "Emergency Contact Number", type: "number" },
+    { id: "Emergency_Relation", label: "Emergency Contact Relation", type: "text" }
+  ];
+
+  const requiredDropdowns = ["Location", "Hostel_Type", "Building_Name_Number", "Room_Number", "Status", "Department"];
+  const requiredInputs = [
+    "Employee_Name", "Department", "Designation", "Employment_Type", "Mobile_No",
+    "Joining_Date", "Aadhar_No", "Emergency_Name", "Emergency_Number", "Emergency_Relation"
+  ];
+
+  // 🔽 First render cascading dropdowns
   dropdownFields.forEach(field => {
     const div = document.createElement("div");
     div.className = "col-md-6";
+    const isRequired = requiredDropdowns.includes(field.id) ? "required" : "";
     div.innerHTML = `
       <label class="form-label">${field.label}</label>
-      <select name="${field.id}" class="form-select" onchange="handleCascadeChange('${field.id}')">
+      <select name="${field.id}" class="form-select" onchange="handleCascadeChange('${field.id}')" ${isRequired}>
         <option value="">Select ${field.label}</option>
       </select>
     `;
     form.appendChild(div);
   });
 
+  // 🔽 Then render other static input fields
+  otherFields.forEach(field => {
+    const div = document.createElement("div");
+    div.className = "col-md-6";
+    const isRequired = requiredInputs.includes(field.id) ? "required" : "";
+    div.innerHTML = `
+      <label class="form-label">${field.label}</label>
+      <input type="${field.type}" name="${field.id}" class="form-control" ${isRequired}>
+    `;
+    form.appendChild(div);
+  });
+
+  // 🔽 Attachment field (optional)
+  const attachmentDiv = document.createElement("div");
+  attachmentDiv.className = "col-md-6";
+  attachmentDiv.innerHTML = `
+    <label class="form-label">Attachment</label>
+    <input type="file" name="AttachmentFile" class="form-control" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,.xls,.xlsx">
+  `;
+  form.appendChild(attachmentDiv);
+
   updateCascadeDropdown("Location");
+  updateCascadeDropdown("Status");
+  updateCascadeDropdown("Department");
 }
 
 function handleCascadeChange(changedField) {
@@ -1016,6 +1131,8 @@ function handleCascadeChange(changedField) {
 
 function updateCascadeDropdown(fieldName) {
   const form = document.getElementById("createExtraBedForm");
+
+  // Get current values of cascading parents
   const filters = {
     Location: form.querySelector('[name="Location"]')?.value || "",
     Hostel_Type: form.querySelector('[name="Hostel_Type"]')?.value || "",
@@ -1024,6 +1141,7 @@ function updateCascadeDropdown(fieldName) {
 
   let filtered = [...fullDataForCreate];
 
+  // Apply cascading filters to narrow down values
   if (filters.Location) {
     filtered = filtered.filter(d => d.Location === filters.Location);
   }
@@ -1034,9 +1152,21 @@ function updateCascadeDropdown(fieldName) {
     filtered = filtered.filter(d => d.Building_Name_Number === filters.Building_Name_Number);
   }
 
-  const values = [...new Set(filtered.map(row => row[fieldName]).filter(Boolean))];
-
   const dropdown = form.querySelector(`select[name="${fieldName}"]`);
+  if (!dropdown) return;
+
+  let values = [];
+
+  // Determine source of values
+  if (["Status", "Department", "Employment_Type"].includes(fieldName)) {
+    // Pull values from full dataset (not filtered by cascading parents)
+    values = [...new Set(fullDataForCreate.map(row => row[fieldName]).filter(Boolean))];
+  } else {
+    // For cascading dropdowns, pull values from filtered dataset
+    values = [...new Set(filtered.map(row => row[fieldName]).filter(Boolean))];
+  }
+
+  // Render options
   dropdown.innerHTML = `<option value="">Select ${fieldName.replace(/_/g, " ")}</option>`;
   values.forEach(val => {
     const opt = document.createElement("option");
@@ -1044,6 +1174,22 @@ function updateCascadeDropdown(fieldName) {
     opt.textContent = val;
     dropdown.appendChild(opt);
   });
+}
+
+</script>
+
+<!-- Attachement Preview JS -->
+<script>
+  function openAttachmentModal(url) {
+  const viewer = document.getElementById("attachmentViewer");
+  const downloadBtn = document.getElementById("downloadAttachmentBtn");
+
+  viewer.src = url;
+  downloadBtn.href = url;
+  downloadBtn.download = url.split('/').pop();
+
+  const modal = new bootstrap.Modal(document.getElementById("attachmentModal"));
+  modal.show();
 }
 </script>
 
@@ -1061,6 +1207,26 @@ function updateCascadeDropdown(fieldName) {
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
           <button type="button" class="btn btn-success" onclick="saveModalEdit()">Save Changes</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Attachment Preview Modal -->
+  <div class="modal fade" id="attachmentModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+      <div class="modal-content">
+        <div class="modal-header bg-info text-white d-flex justify-content-between align-items-center">
+          <h5 class="modal-title mb-0">Attachment Preview</h5>
+          <div>
+            <a id="downloadAttachmentBtn" class="btn btn-light btn-sm me-2" target="_blank">
+              ⬇️ Download
+            </a>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+        </div>        
+        <div class="modal-body">
+          <iframe id="attachmentViewer" src="" style="width: 100%; height: 80vh;" frameborder="0"></iframe>
         </div>
       </div>
     </div>
