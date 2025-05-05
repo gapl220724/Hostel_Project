@@ -426,7 +426,28 @@ def add_row():
             })
 
         # Insert row
+        # Compute Sl.No to append after existing Room group
+        cursor.execute("""
+            SELECT MAX([Sl.No]) FROM Hostel_Data
+            WHERE Location = ? AND Hostel_Type = ? AND Building_Name_Number = ? AND Room_Number = ?
+        """, (
+            insert_data["Location"],
+            insert_data["Hostel_Type"],
+            insert_data["Building_Name_Number"],
+            insert_data["Room_Number"]
+        ))
+        max_sl = cursor.fetchone()[0] or 0
+
+        # Inject Sl.No manually (push to end of group)
+        insert_data["Sl.No"] = max_sl + 1
+        all_fields = ["Sl.No"] + all_fields  # Prepend it
+
+        columns = ', '.join([f"[{col}]" for col in insert_data])
+        placeholders = ', '.join(['?'] * len(insert_data))
+        values = list(insert_data.values())
+
         cursor.execute(f"INSERT INTO Hostel_Data ({columns}) VALUES ({placeholders})", values)
+
         conn.commit()
         conn.close()
 

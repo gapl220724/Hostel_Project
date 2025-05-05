@@ -265,6 +265,22 @@
     function renderTable() {
       const start = (page - 1) * limit;
       const end = start + limit;
+
+      filteredData.sort((a, b) => {
+        const order = ['Location', 'Hostel_Type', 'Building_Name_Number', 'Room_Number'];
+        for (const key of order) {
+          const valA = String(a[key] || '');
+          const valB = String(b[key] || '');
+          if (valA < valB) return -1;
+          if (valA > valB) return 1;
+        }
+
+        // Sort Bed-1, Bed-Extra-1, Bed-Extra-2 in order
+        const capA = String(a.Room_Capacity || '');
+        const capB = String(b.Room_Capacity || '');
+        return capA.localeCompare(capB, undefined, { numeric: true, sensitivity: 'base' });
+      });
+
       const paginatedData = filteredData.slice(start, end);
 
       const head = document.getElementById("table-headers");
